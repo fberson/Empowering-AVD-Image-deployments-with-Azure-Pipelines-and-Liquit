@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentversion": "1.0.0.0",
+  "parameters": {
+    "sessionHostNamePrefix": {
+      "value": ""
+    },
+    "virtualMachineSize": {
+      "value": ""
+    },
+    "availabilitySetName": {
+      "value": ""
+    },
+    "gpuType": {
+      "value": ""
+    },
+    "numberOfInstances": {
+      "value": 2
+    },
+    "existingVnetName": {
+      "value": ""
+    },
+    "existingSubnetName": {
+      "value": ""
+    },
+    "existingVnetResourceGroupName": {
+      "value": ""
+    },
+    "existingKeyVaultName": {
+      "value": ""
+    },
+    "existingKeyVaultResourceGroupName": {
+      "value": ""
+    },
+    "existingKeyVaultLocalAdminSecretName": {
+      "value": ""
+    },
+    "existingKeyVaultDomainJoinSecretName": {
+      "value": ""
+    },
+    "existingSharedImageGalleryResourceGroup": {
+      "value": ""
+    },
+    "existingSharedImageGalleryName": {
+      "value": ""
+    },
+    "existingSharedImageGalleryDefinitionName": {
+      "value": ""
+    },
+    "existingSharedImageGalleryVersionName": {
+      "value": ""
+    },
+    "adDomainName": {
+      "value": ""
+    },
+    "domainJoinUPN": {
+      "value": ""
+    },
+    "ouLocationAVDSessionHost": {
+      "value": ""
+    },
+    "registrationKey": {
+      "value": ""
+    }
+  }
+}

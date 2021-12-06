@@ -1,0 +1,99 @@
+# AVD Template Image Liquit Build Demo
+
+trigger:
+- "none"
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+
+- task: piraces.bicep-tasks.install-task.BicepInstall@0
+  displayName: 'Install Bicep CLI'
+
+- task: piraces.bicep-tasks.run-task.BicepBuild@0
+  displayName: 'Run Bicep CLI build command.'
+  inputs:
+    process: single
+    sourceFile: '$(System.DefaultWorkingDirectory)/src/image-create/main.bicep'
+
+- task: AzureResourceManagerTemplateDeployment@3
+  displayName: 'Deploy Templ, get Liquit apps, Sysprep,Shutdown'
+  inputs:
+    azureResourceManagerConnection: 'Azure RM'
+    subscriptionId: $(azureSubscriptionID)
+    resourceGroupName: $(templateVMResourceGroup)
+    location: $(location)
+    csmFile: '$(System.DefaultWorkingDirectory)/src/image-create/main.json'
+    csmParametersFile: '$(System.DefaultWorkingDirectory)/src/image-create/main.parameters.json'
+    deploymentName: 'AVD-Image-Build-Demo'
+
+- task: AzureCLI@2
+  displayName: 'Deallocate & generalize Template VM'
+  inputs:
+    azureSubscription: 'Azure RM'
+    scriptType: ps
+    scriptLocation: inlineScript
+    inlineScript: |
+      az vm deallocate --name $(templateVMName) --resource-group $(templateVMResourceGroup)
+      az vm generalize --name $(templateVMName) --resource-group $(templateVMResourceGroup)
+
+- task: AzureCLI@2
+  displayName: 'Capture VM & create template image in SiG'
+  inputs:
+    azureSubscription: 'Azure RM'
+    scriptType: ps
+    scriptLocation: inlineScript
+    inlineScript: 'az sig image-version create  --resource-group $(templateImageResourceGroup)  --gallery-image-version $(imageVersion) --gallery-image-definition $(imageDefininionName) --gallery-name $(imageGalleryName) --managed-image $(az vm show -n $(templateVMName) -g $(templateVMResourceGroup) --query id)'
+
+- task: AzureCLI@2
+  displayName: 'Delete source VM and related resources'
+  inputs:
+    azureSubscription: 'Azure RM'
+    scriptType: ps
+    scriptLocation: inlineScript
+    inlineScript: |
+     az vm delete --name $(templateVMName) --resource-group $(templateVMResourceGroup) --yes
+     $diskName =  "$(templateVMName)" + "-os"
+     az disk delete --name $diskName --resource-group $(templateVMResourceGroup) --yes
+     $nicName =  "$(templateVMName)" + "-nic"
+     az network nic delete --name $nicName --resource-group $(templateVMResourceGroup)     
+     
+- task: AzureCLI@2
+  displayName: 'Grab Host pool Registration ID & inject param file'
+  inputs:
+    azureSubscription: 'Azure RM'
+    scriptType: ps
+    scriptLocation: inlineScript
+    inlineScript: |
+     az config set extension.use_dynamic_install=yes_without_prompt
+     $Registered = az desktopvirtualization hostpool show --name $(existingHostPoolName) --resource-group $(avdControlPlaneResourceGroup) --query 'registrationInfo.token'
+     if (-not(-Not $Registered.Token)){$registrationTokenValidFor = (NEW-TIMESPAN -Start (get-date) -End $Registered.ExpirationTime | select-object Days,Hours,Minutes,Seconds)}
+     $registrationTokenValidFor
+     if ((-Not $Registered.Token) -or ($Registered.ExpirationTime -le (get-date)))
+     {
+       $tokenExpireTime = (get-date).AddHours(4).ToString("yyyy-MM-ddTHH:mm:ss")
+       az desktopvirtualization hostpool update --resource-group $(avdControlPlaneResourceGroup) --name $(existingHostPoolName) --registration-info expiration-time=$tokenExpireTime registration-token-operation="Update"
+       $Registered = az desktopvirtualization hostpool show --name $(existingHostPoolName) --resource-group $(avdControlPlaneResourceGroup) --query 'registrationInfo.token'
+     }
+     Get-ChildItem -Recurse
+     $json = Get-Content '.\src\image-deploy\main.parameters.json' | Out-String | ConvertFrom-Json
+     $json.parameters.registrationKey.value = ($Registered -replace '"', "")
+     $json | ConvertTo-Json | Set-Content '.\src\image-deploy\main.parameters.json'
+
+- task: piraces.bicep-tasks.run-task.BicepBuild@0
+  displayName: 'Run Bicep CLI build command.'
+  inputs:
+    process: single
+    sourceFile: '$(System.DefaultWorkingDirectory)/src/image-deploy/main.bicep'
+
+- task: AzureResourceManagerTemplateDeployment@3
+  displayName: 'Deploy main.bicep to Azure for Image Deploy'
+  inputs:
+    azureResourceManagerConnection: 'Azure RM'
+    subscriptionId: $(azureSubscriptionID)
+    resourceGroupName: $(existingSessionHostResourceGroup) 
+    location: $(location)
+    csmFile: '$(System.DefaultWorkingDirectory)/src/image-deploy/main.json'
+    csmParametersFile: '$(System.DefaultWorkingDirectory)/src/image-deploy/main.parameters.json'
+    deploymentName: 'AVD-Image-Deploy-Demo'
